@@ -1,0 +1,50 @@
+# Add CSV names to ignore (one per line)
+# Lines starting with # are comments and will be ignored
+# Example entries:
+# weight
+# sleep
+# exercise
+.device_profile
+.user_profile
+.badge
+.best_records
+.exercise.periodization_training_program
+.exercise.periodization_training_schedule
+.exercise.route
+.exercise.weather
+.hsp.references
+.insight.message_notification
+.insight_message
+.preferences
+.program.sleep_coaching.mission
+.program.sleep_coaching.session
+.rewards
+.service_preferences
+.shm_device
+.social.service_status
+.step_daily_trend
+.stress
+.stress.histogram
+.height
+.floors_climbed
+.report
+.tracker.floors_day_summary
+.vitality_score
+.vitality.nap_data
+.activity_level
+.activity.day_summary
+.oxygen_saturation.raw
+.tracker.oxygen_saturation
+.cycle.preferred
+.cycle.prediction
+.cycle.profile
+.alerted_heart_rate
+.tracker.pedometer_day_summary
+.calories_burned.details
+.calibration_blood_pressure
+.sleep_raw_data
+.sleep
+.sleep_stage
+.hrv
+.cycle.daily_temperature.raw
+.cycle.custom_log

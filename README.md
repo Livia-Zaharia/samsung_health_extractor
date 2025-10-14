@@ -12,5 +12,7 @@ A simple script to generate csv files from a Samsung Data Export
 - Step 3
   
     Run the script
+
+Notes: it can be edited to include whatever you wnat from the samsung health- i just lacked the patience to search them all
     
     

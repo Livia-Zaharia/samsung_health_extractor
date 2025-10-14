@@ -3,3 +3,5 @@
 *.pyo
 __pycache__/
 .DS_Store
+/Samsung Health
+*.csv

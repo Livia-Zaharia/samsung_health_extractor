@@ -1,0 +1,123 @@
+{
+  "csv_filtering": {
+    "enabled_csvs": [
+      ".cycle.daily_temperature",
+      ".cycle.flow", 
+      ".cycle.sexual_activity"
+    ],
+    "description": "List of CSV files to process. Only these files will be included in processing."
+  },
+  "data_combinations": {
+    "cycle_complete": {
+      "description": "Complete menstrual cycle data combining all cycle-related CSV files",
+      "output_file": "complete_cycle_data.csv",
+      "sources": [
+        {
+          "csv_name": ".cycle.daily_temperature",
+          "priority": 1,
+          "merge_key": "update_time",
+          "merge_key_rename": "day_time",
+          "required": true,
+          "columns_to_include": ["create_time", "update_time"],
+          "rename_columns": {
+            "create_time": "temperature",
+            "update_time": "day_time"
+          }
+        },
+        {
+          "csv_name": ".cycle.flow",
+          "priority": 2,
+          "merge_key": "start_time",
+          "merge_key_rename": "day_time",
+          "required": false,
+          "columns_to_include": ["start_time", "spotting", "amount"],
+          "rename_columns": {
+            "spotting": "flow_spotting",
+            "amount": "flow_amount"
+          }
+        },
+        {
+          "csv_name": ".cycle.sexual_activity",
+          "priority": 3,
+          "merge_key": "start_time",
+          "merge_key_rename": "day_time",
+          "required": false,
+          "columns_to_include": ["start_time"],
+          "rename_columns": {
+            "start_time": "sexual_activity_date"
+          }
+        }
+      ],
+      "output_structure": {
+        "primary_sort": "day_time",
+        "sort_ascending": true,
+        "final_columns": [
+          "day_time",
+          "temperature",
+          "flow_spotting",
+          "flow_amount",
+          "sexual_activity_date"
+        ],
+        "data_processing": {
+          "fill_missing_temperatures": true,
+          "interpolate_missing_days": false,
+          "add_cycle_day_number": true
+        }
+      }
+    },
+    "health_summary": {
+      "description": "Daily health summary combining multiple health metrics",
+      "output_file": "daily_health_summary.csv",
+      "sources": [
+        {
+          "csv_name": "weight",
+          "priority": 1,
+          "merge_key": "day_time",
+          "required": false,
+          "columns_to_include": ["weight", "day_time"]
+        },
+        {
+          "csv_name": "heart_rate",
+          "priority": 2,
+          "merge_key": "day_time",
+          "required": false,
+          "columns_to_include": ["heart_rate", "day_time"]
+        }
+      ],
+      "output_structure": {
+        "primary_sort": "day_time",
+        "sort_ascending": true,
+        "final_columns": [
+          "day_time",
+          "weight",
+          "heart_rate"
+        ],
+        "data_processing": {
+          "aggregate_daily": true,
+          "fill_missing_values": "N/A"
+        }
+      }
+    }
+  },
+  "instructions": {
+    "description": "Configuration for combining data from multiple CSV sources",
+    "usage": "Define how to merge and structure data from different CSV files",
+    "schema_explanation": {
+      "sources": "Array of CSV sources to combine, ordered by priority",
+      "priority": "Processing order (1 = highest priority)",
+      "merge_key": "Column used to merge data (usually day_time or date)",
+      "required": "Whether this source is mandatory for the combination",
+      "columns_to_include": "Specific columns to extract from this CSV",
+      "rename_columns": "Map original column names to new names",
+      "output_structure": "Final structure and processing rules",
+      "data_processing": "Additional processing options"
+    },
+    "notes": [
+      "Higher priority sources are processed first",
+      "Required sources must be present or the combination will fail",
+      "merge_key is used to align data across different sources",
+      "output_file specifies the final CSV filename",
+      "data_processing options control how the combined data is processed"
+    ]
+  }
+}
