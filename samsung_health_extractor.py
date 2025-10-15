@@ -763,6 +763,141 @@ def process_data_combinations(
                             .alias("sexual_activity")
                         )
                     
+                    # Calculate sleep duration if requested
+                    if data_processing.get("calculate_sleep_duration") and "sleep_start_time" in combined_df.columns and "sleep_end_time" in combined_df.columns:
+                        action.log(message_type="calculating_sleep_duration")
+                        try:
+                            # Parse sleep start and end times as datetime
+                            combined_df = combined_df.with_columns([
+                                pl.col("sleep_start_time").str.to_datetime().alias("sleep_start_dt"),
+                                pl.col("sleep_end_time").str.to_datetime().alias("sleep_end_dt")
+                            ])
+                            
+                            # Calculate duration in seconds
+                            combined_df = combined_df.with_columns(
+                                (pl.col("sleep_end_dt") - pl.col("sleep_start_dt")).dt.total_seconds().alias("duration_seconds")
+                            )
+                            
+                            # Convert to HH:MM:SS format
+                            combined_df = combined_df.with_columns(
+                                pl.when(pl.col("duration_seconds").is_not_null())
+                                .then(
+                                    (pl.col("duration_seconds") // 3600).cast(pl.Int32).cast(pl.Utf8).str.pad_start(2, "0") + ":" +
+                                    ((pl.col("duration_seconds") % 3600) // 60).cast(pl.Int32).cast(pl.Utf8).str.pad_start(2, "0") + ":" +
+                                    (pl.col("duration_seconds") % 60).cast(pl.Int32).cast(pl.Utf8).str.pad_start(2, "0")
+                                )
+                                .otherwise(None)
+                                .alias("sleep_duration")
+                            )
+                            
+                            # Drop temporary columns
+                            combined_df = combined_df.drop(["sleep_start_dt", "sleep_end_dt", "duration_seconds"])
+                            
+                            # Add sleep_duration to final columns if not already there
+                            final_columns = output_config.get("final_columns", [])
+                            if final_columns and "sleep_duration" not in final_columns:
+                                # Insert sleep_duration after sleep_end_time
+                                if "sleep_end_time" in final_columns:
+                                    idx = final_columns.index("sleep_end_time") + 1
+                                    final_columns.insert(idx, "sleep_duration")
+                                else:
+                                    final_columns.append("sleep_duration")
+                                output_config["final_columns"] = final_columns
+                            
+                            action.log(message_type="sleep_duration_calculated")
+                        except Exception as e:
+                            action.log(message_type="sleep_duration_calculation_error", error=str(e))
+                    
+                    # Calculate exercise duration if requested
+                    if data_processing.get("calculate_exercise_duration") and "start_time" in combined_df.columns and "end_time" in combined_df.columns:
+                        action.log(message_type="calculating_exercise_duration")
+                        try:
+                            # Parse start and end times as datetime
+                            combined_df = combined_df.with_columns([
+                                pl.col("start_time").str.to_datetime().alias("start_dt"),
+                                pl.col("end_time").str.to_datetime().alias("end_dt")
+                            ])
+                            
+                            # Calculate duration in seconds
+                            combined_df = combined_df.with_columns(
+                                (pl.col("end_dt") - pl.col("start_dt")).dt.total_seconds().alias("duration_seconds")
+                            )
+                            
+                            # Convert to HH:MM:SS format
+                            combined_df = combined_df.with_columns(
+                                pl.when(pl.col("duration_seconds").is_not_null())
+                                .then(
+                                    (pl.col("duration_seconds") // 3600).cast(pl.Int32).cast(pl.Utf8).str.pad_start(2, "0") + ":" +
+                                    ((pl.col("duration_seconds") % 3600) // 60).cast(pl.Int32).cast(pl.Utf8).str.pad_start(2, "0") + ":" +
+                                    (pl.col("duration_seconds") % 60).cast(pl.Int32).cast(pl.Utf8).str.pad_start(2, "0")
+                                )
+                                .otherwise(None)
+                                .alias("exercise_duration")
+                            )
+                            
+                            # Drop temporary columns
+                            combined_df = combined_df.drop(["start_dt", "end_dt", "duration_seconds"])
+                            
+                            # Add exercise_duration to final columns if not already there
+                            final_columns = output_config.get("final_columns", [])
+                            if final_columns and "exercise_duration" not in final_columns:
+                                # Insert exercise_duration after end_time
+                                if "end_time" in final_columns:
+                                    idx = final_columns.index("end_time") + 1
+                                    final_columns.insert(idx, "exercise_duration")
+                                else:
+                                    final_columns.append("exercise_duration")
+                                output_config["final_columns"] = final_columns
+                            
+                            action.log(message_type="exercise_duration_calculated")
+                        except Exception as e:
+                            action.log(message_type="exercise_duration_calculation_error", error=str(e))
+                    
+                    # Calculate respiratory duration if requested
+                    if data_processing.get("calculate_respiratory_duration") and "respiratory_start_time" in combined_df.columns and "respiratory_end_time" in combined_df.columns:
+                        action.log(message_type="calculating_respiratory_duration")
+                        try:
+                            # Parse respiratory start and end times as datetime
+                            combined_df = combined_df.with_columns([
+                                pl.col("respiratory_start_time").str.to_datetime().alias("respiratory_start_dt"),
+                                pl.col("respiratory_end_time").str.to_datetime().alias("respiratory_end_dt")
+                            ])
+                            
+                            # Calculate duration in seconds
+                            combined_df = combined_df.with_columns(
+                                (pl.col("respiratory_end_dt") - pl.col("respiratory_start_dt")).dt.total_seconds().alias("duration_seconds")
+                            )
+                            
+                            # Convert to HH:MM:SS format
+                            combined_df = combined_df.with_columns(
+                                pl.when(pl.col("duration_seconds").is_not_null())
+                                .then(
+                                    (pl.col("duration_seconds") // 3600).cast(pl.Int32).cast(pl.Utf8).str.pad_start(2, "0") + ":" +
+                                    ((pl.col("duration_seconds") % 3600) // 60).cast(pl.Int32).cast(pl.Utf8).str.pad_start(2, "0") + ":" +
+                                    (pl.col("duration_seconds") % 60).cast(pl.Int32).cast(pl.Utf8).str.pad_start(2, "0")
+                                )
+                                .otherwise(None)
+                                .alias("respiratory_duration")
+                            )
+                            
+                            # Drop temporary columns
+                            combined_df = combined_df.drop(["respiratory_start_dt", "respiratory_end_dt", "duration_seconds"])
+                            
+                            # Add respiratory_duration to final columns if not already there
+                            final_columns = output_config.get("final_columns", [])
+                            if final_columns and "respiratory_duration" not in final_columns:
+                                # Insert respiratory_duration after respiratory_end_time
+                                if "respiratory_end_time" in final_columns:
+                                    idx = final_columns.index("respiratory_end_time") + 1
+                                    final_columns.insert(idx, "respiratory_duration")
+                                else:
+                                    final_columns.append("respiratory_duration")
+                                output_config["final_columns"] = final_columns
+                            
+                            action.log(message_type="respiratory_duration_calculated")
+                        except Exception as e:
+                            action.log(message_type="respiratory_duration_calculation_error", error=str(e))
+                    
                     # Remove completely empty rows
                     combined_df = combined_df.filter(~pl.all_horizontal(pl.all().is_null()))
                     

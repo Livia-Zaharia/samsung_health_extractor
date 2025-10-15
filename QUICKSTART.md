@@ -129,8 +129,11 @@ Example output:
 📋 Check log file for details: logs/samsung_health_extract_20241015_143022.log
 ```
 
-Generated files:
-- `complete_cycle_data.csv` (or as configured in your combination settings)
+Generated files (based on default configuration):
+- `complete_cycle_data.csv` - Menstrual cycle data (temperature, flow, sexual activity)
+- `complete_tracker_data_hr_steps_spo2.csv` - Tracker data (heart rate, steps, SpO2)
+- `complete_sleep_weight.csv` - Sleep and weight data with calculated sleep duration
+- `complete_exercise_respiratory_rate.csv` - Exercise and respiratory rate data
 - Timestamped log file in `logs/` directory with detailed processing information
 
 ## Next Steps
@@ -174,9 +177,9 @@ If your data is elsewhere:
 uv run samsung-health-extract "C:/Users/YourName/Samsung Health Export"
 ```
 
-### Example 3: Enable More CSV Files
+### Example 3: Current Enabled CSV Files
 
-Edit `data_combination.json`:
+The default configuration includes:
 ```json
 {
   "csv_filtering": {
@@ -184,12 +187,19 @@ Edit `data_combination.json`:
       ".cycle.daily_temperature",
       ".cycle.flow",
       ".cycle.sexual_activity",
+      ".tracker.heart_rate",
+      ".tracker.pedometer_step_count",
+      ".tracker.oxygen_saturation",
+      ".weight",
       ".sleep",
-      ".exercise"
+      ".exercise",
+      ".respiratory_rate"
     ]
   }
 }
 ```
+
+You can edit this list in `data_combination.json` to add or remove CSV files as needed.
 
 ## Getting Help
 
@@ -203,7 +213,12 @@ Edit `data_combination.json`:
 3. **Backup data**: Keep a copy of your original Samsung Health export
 4. **Customize**: Edit `data_combination.json` to fit your needs
 5. **Analyze logs**: Use `jq` or similar tools to filter and analyze the JSON log files
+6. Column names that are with long enumeration like, say, com.samsung.health.sleep.start_time are absolute, while start_time might be influenced by empty columns
 
+
+
+IMPORTANT NOTE!
+the library is designed to be modular so anyone can activate and deactivate whatver csv they need but you need NOT to forget to define it in the data combination.json file
 ---
 
 **Happy data processing! 🎉**

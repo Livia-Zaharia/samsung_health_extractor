@@ -119,8 +119,12 @@
 .sleep_raw_data
 #raw unprocessed sleep sensor data- redundant as this is already processed and included in sleep_combined file
 
-.sleep
+#.sleep
 #basic sleep session records (start/end times)- redundant as more comprehensive data exists in sleep_combined file
+
+.sleep_combined
+
+.skin_temperature
 
 .sleep_stage
 #detailed sleep stage data (light, deep, REM phases)- redundant as this information is included in sleep_combined file
