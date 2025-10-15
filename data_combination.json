@@ -3,7 +3,9 @@
     "enabled_csvs": [
       ".cycle.daily_temperature",
       ".cycle.flow", 
-      ".cycle.sexual_activity"
+      ".cycle.sexual_activity",
+      ".tracker.heart_rate",
+      ".tracker.pedometer_step_count"
     ],
     "description": "List of CSV files to process. Only these files will be included in processing."
   },
@@ -16,22 +18,19 @@
           "csv_name": ".cycle.daily_temperature",
           "priority": 1,
           "merge_key": "day_time",
-          "merge_key_rename": "day_time",
+          "merge_key_rename": "date",
           "required": true,
-          "columns_to_include": ["create_time", "day_time", "temperature"],
-          "rename_columns": {
-            "create_time": "create_time_raw"
-          }
+          "columns_to_include": ["day_time", "temperature"],
+          "rename_columns": {}
         },
         {
           "csv_name": ".cycle.flow",
           "priority": 2,
           "merge_key": "start_time",
-          "merge_key_rename": "day_time",
+          "merge_key_rename": "date",
           "required": false,
-          "columns_to_include": ["start_time", "spotting", "amount"],
+          "columns_to_include": ["start_time", "amount"],
           "rename_columns": {
-            "spotting": "flow_spotting",
             "amount": "flow_amount"
           }
         },
@@ -39,63 +38,74 @@
           "csv_name": ".cycle.sexual_activity",
           "priority": 3,
           "merge_key": "start_time",
-          "merge_key_rename": "day_time",
+          "merge_key_rename": "date",
           "required": false,
           "columns_to_include": ["start_time"],
           "rename_columns": {
-            "start_time": "sexual_activity_date"
+            "start_time": "sexual_activity"
           }
         }
       ],
       "output_structure": {
-        "primary_sort": "day_time",
+        "primary_sort": "date",
         "sort_ascending": true,
         "final_columns": [
-          "day_time",
-          "create_time_raw",
+          "date",
           "temperature",
-          "flow_spotting",
           "flow_amount",
-          "sexual_activity_date"
+          "sexual_activity"
         ],
         "data_processing": {
-          "fill_missing_temperatures": true,
-          "interpolate_missing_days": false,
+          "interpolate_temperature": true,
           "add_cycle_day_number": true
         }
       }
     },
-    "health_summary": {
-      "description": "Daily health summary combining multiple health metrics",
-      "output_file": "daily_health_summary.csv",
+    "tracker_complete": {
+      "description": "Complete tracker data combining heart rate and step count data",
+      "output_file": "complete_tracker_data_hr_steps.csv",
       "sources": [
         {
-          "csv_name": "weight",
+          "csv_name": ".tracker.heart_rate",
           "priority": 1,
-          "merge_key": "day_time",
+          "merge_key": "com.samsung.health.heart_rate.start_time",
+          "merge_key_rename": "datetime",
           "required": false,
-          "columns_to_include": ["weight", "day_time"]
+          "columns_to_include": [
+            "com.samsung.health.heart_rate.start_time",
+            "com.samsung.health.heart_rate.heart_rate"
+          ],
+          "rename_columns": {
+            "com.samsung.health.heart_rate.heart_rate": "heart_rate"
+          }
         },
         {
-          "csv_name": "heart_rate",
+          "csv_name": ".tracker.pedometer_step_count",
           "priority": 2,
-          "merge_key": "day_time",
+          "merge_key": "com.samsung.health.step_count.start_time",
+          "merge_key_rename": "datetime",
           "required": false,
-          "columns_to_include": ["heart_rate", "day_time"]
+          "columns_to_include": [
+            "com.samsung.health.step_count.start_time",
+            "com.samsung.health.step_count.count",
+            "com.samsung.health.step_count.distance"
+          ],
+          "rename_columns": {
+            "com.samsung.health.step_count.count": "step_count",
+            "com.samsung.health.step_count.distance": "distance"
+          }
         }
       ],
       "output_structure": {
-        "primary_sort": "day_time",
+        "primary_sort": "datetime",
         "sort_ascending": true,
         "final_columns": [
-          "day_time",
-          "weight",
-          "heart_rate"
+          "datetime",
+          "heart_rate",
+          "step_count",
+          "distance"
         ],
-        "data_processing": {
-          "aggregate_daily": true,
-          "fill_missing_values": "N/A"
-        }
+        "data_processing": {}
       }
     }
   },

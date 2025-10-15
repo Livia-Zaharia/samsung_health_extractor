@@ -558,19 +558,31 @@ def process_data_combinations(
                                     sample=df.head(3).to_dicts() if len(df) > 0 else []
                                 )
                         
-                        # Convert merge key to date for proper merging
+                        # Convert merge key to date or datetime for proper merging
+                        # If merge_key_rename is "datetime", preserve full datetime; otherwise convert to date
                         if merge_key in df.columns:
                             try:
+                                use_datetime = (merge_key_rename == "datetime")
                                 # Check if column is numeric (milliseconds timestamp)
                                 if df[merge_key].dtype in [pl.Int64, pl.Int32, pl.Float64, pl.Float32]:
-                                    df = df.with_columns(
-                                        pl.from_epoch(pl.col(merge_key), time_unit="ms").dt.date().alias(merge_key)
-                                    )
+                                    if use_datetime:
+                                        df = df.with_columns(
+                                            pl.from_epoch(pl.col(merge_key), time_unit="ms").alias(merge_key)
+                                        )
+                                    else:
+                                        df = df.with_columns(
+                                            pl.from_epoch(pl.col(merge_key), time_unit="ms").dt.date().alias(merge_key)
+                                        )
                                 else:
                                     # Try to parse as datetime string
-                                    df = df.with_columns(
-                                        pl.col(merge_key).str.to_datetime().dt.date()
-                                    )
+                                    if use_datetime:
+                                        df = df.with_columns(
+                                            pl.col(merge_key).str.to_datetime()
+                                        )
+                                    else:
+                                        df = df.with_columns(
+                                            pl.col(merge_key).str.to_datetime().dt.date()
+                                        )
                             except Exception as e:
                                 action.log(message_type="datetime_conversion_error", error=str(e))
                         
@@ -597,17 +609,28 @@ def process_data_combinations(
                                 merge_key=merge_key
                             )
                             
-                            # Convert existing merge key to date for consistent merging
+                            # Convert existing merge key to date or datetime for consistent merging
                             if merge_key in combined_df.columns:
                                 try:
+                                    use_datetime = (merge_key == "datetime")
                                     if combined_df[merge_key].dtype in [pl.Int64, pl.Int32, pl.Float64, pl.Float32]:
-                                        combined_df = combined_df.with_columns(
-                                            pl.from_epoch(pl.col(merge_key), time_unit="ms").dt.date().alias(merge_key)
-                                        )
+                                        if use_datetime:
+                                            combined_df = combined_df.with_columns(
+                                                pl.from_epoch(pl.col(merge_key), time_unit="ms").alias(merge_key)
+                                            )
+                                        else:
+                                            combined_df = combined_df.with_columns(
+                                                pl.from_epoch(pl.col(merge_key), time_unit="ms").dt.date().alias(merge_key)
+                                            )
                                     else:
-                                        combined_df = combined_df.with_columns(
-                                            pl.col(merge_key).str.to_datetime().dt.date()
-                                        )
+                                        if use_datetime:
+                                            combined_df = combined_df.with_columns(
+                                                pl.col(merge_key).str.to_datetime()
+                                            )
+                                        else:
+                                            combined_df = combined_df.with_columns(
+                                                pl.col(merge_key).str.to_datetime().dt.date()
+                                            )
                                 except Exception as e:
                                     action.log(message_type="datetime_conversion_error", error=str(e))
                             
@@ -662,10 +685,31 @@ def process_data_combinations(
                         combined_df = combined_df.sort(sort_by, descending=not sort_ascending)
                     
                     # Convert merge key back to string for CSV output
+                    # If merge_key is "datetime", preserve full datetime; otherwise convert to date only
                     if merge_key and merge_key in combined_df.columns:
-                        combined_df = combined_df.with_columns(
-                            pl.col(merge_key).cast(pl.String)
-                        )
+                        try:
+                            use_datetime = (merge_key == "datetime")
+                            # If it's a datetime, convert to string (preserving time if needed)
+                            if combined_df[merge_key].dtype == pl.Datetime:
+                                if use_datetime:
+                                    # Keep full datetime as string
+                                    combined_df = combined_df.with_columns(
+                                        pl.col(merge_key).cast(pl.String).alias(merge_key)
+                                    )
+                                else:
+                                    # Convert to date first then to string
+                                    combined_df = combined_df.with_columns(
+                                        pl.col(merge_key).dt.date().cast(pl.String).alias(merge_key)
+                                    )
+                            else:
+                                combined_df = combined_df.with_columns(
+                                    pl.col(merge_key).cast(pl.String)
+                                )
+                        except Exception as e:
+                            action.log(message_type="date_format_error", error=str(e))
+                            combined_df = combined_df.with_columns(
+                                pl.col(merge_key).cast(pl.String)
+                            )
                     
                     # Select final columns if specified
                     final_columns = output_config.get("final_columns", [])
@@ -686,6 +730,38 @@ def process_data_combinations(
                     if data_processing.get("fill_missing_values"):
                         fill_value = data_processing["fill_missing_values"]
                         combined_df = combined_df.fill_null(fill_value)
+                    
+                    # Interpolate temperature if requested
+                    if data_processing.get("interpolate_temperature") and "temperature" in combined_df.columns:
+                        action.log(message_type="interpolating_temperature")
+                        try:
+                            # Replace -1 with null for interpolation
+                            combined_df = combined_df.with_columns(
+                                pl.when(pl.col("temperature") == -1.0)
+                                .then(None)
+                                .otherwise(pl.col("temperature"))
+                                .alias("temperature")
+                            )
+                            # Apply linear interpolation
+                            combined_df = combined_df.with_columns(
+                                pl.col("temperature").interpolate().alias("temperature")
+                            )
+                            # Round to 2 decimal places
+                            combined_df = combined_df.with_columns(
+                                pl.col("temperature").round(2).alias("temperature")
+                            )
+                            action.log(message_type="temperature_interpolated_and_rounded")
+                        except Exception as e:
+                            action.log(message_type="interpolation_error", error=str(e))
+                    
+                    # Convert sexual_activity to boolean marker (1 if exists, empty if not)
+                    if "sexual_activity" in combined_df.columns:
+                        combined_df = combined_df.with_columns(
+                            pl.when(pl.col("sexual_activity").is_not_null())
+                            .then(pl.lit(1))
+                            .otherwise(None)
+                            .alias("sexual_activity")
+                        )
                     
                     # Remove completely empty rows
                     combined_df = combined_df.filter(~pl.all_horizontal(pl.all().is_null()))
@@ -778,11 +854,36 @@ def extract_data(samsung_data_path: Path = Path("./Samsung Health")) -> None:
                 action.log(message_type="starting_data_combinations")
                 process_data_combinations(combination_config, categories, csv_paths)
             
-            # Calculate statistics
+            # Calculate statistics and print to console
             total_files = 0
+            typer.echo("\n" + "="*80)
+            typer.echo("📊 AVAILABLE CSV FILES (Hierarchical Structure)")
+            typer.echo("="*80 + "\n")
+            
             for category, data in categories.items():
                 category_total = len(data["subcategories"]) + len(data["files"])
                 total_files += category_total
+                
+                # Print category header
+                typer.echo(f"📁 {category}")
+                typer.echo(f"   ├─ Subcategories: {len(data['subcategories'])}")
+                typer.echo(f"   ├─ Direct files: {len(data['files'])}")
+                typer.echo(f"   └─ Total: {category_total}")
+                
+                # Print subcategories if any
+                if data["subcategories"]:
+                    typer.echo(f"\n   Subcategories:")
+                    for subcat in data["subcategories"]:
+                        typer.echo(f"      • {subcat}")
+                
+                # Print direct files if any
+                if data["files"]:
+                    typer.echo(f"\n   Files:")
+                    for file in data["files"]:
+                        typer.echo(f"      • {file}")
+                
+                typer.echo()  # Empty line between categories
+                
                 action.log(
                     message_type="category_stats",
                     category=category,
@@ -790,6 +891,10 @@ def extract_data(samsung_data_path: Path = Path("./Samsung Health")) -> None:
                     files=len(data["files"]),
                     total=category_total
                 )
+            
+            typer.echo("="*80)
+            typer.echo(f"📊 SUMMARY: {len(categories)} categories, {total_files} total files")
+            typer.echo("="*80 + "\n")
             
             action.log(message_type="overall_stats", total_categories=len(categories), total_files=total_files)
 
