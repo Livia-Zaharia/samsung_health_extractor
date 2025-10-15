@@ -15,13 +15,12 @@
         {
           "csv_name": ".cycle.daily_temperature",
           "priority": 1,
-          "merge_key": "update_time",
+          "merge_key": "day_time",
           "merge_key_rename": "day_time",
           "required": true,
-          "columns_to_include": ["create_time", "update_time"],
+          "columns_to_include": ["create_time", "day_time", "temperature"],
           "rename_columns": {
-            "create_time": "temperature",
-            "update_time": "day_time"
+            "create_time": "create_time_raw"
           }
         },
         {
@@ -53,6 +52,7 @@
         "sort_ascending": true,
         "final_columns": [
           "day_time",
+          "create_time_raw",
           "temperature",
           "flow_spotting",
           "flow_amount",

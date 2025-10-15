@@ -14,7 +14,7 @@ from typing import Any, TextIO
 
 import polars as pl
 import typer
-from eliot import Message, add_destinations, start_action
+from eliot import add_destinations, log_message, start_action
 
 app = typer.Typer(help="Samsung Health Data Extractor")
 
@@ -41,10 +41,15 @@ def setup_logging(log_file: Path | None = None) -> TextIO:
     log_handle = log_file.open("w", encoding="utf-8")
     
     # Add file destination - Eliot will write JSON to this file
-    add_destinations(log_handle)
+    # Eliot expects a callable that takes a message dict
+    def write_log(message: dict) -> None:
+        log_handle.write(json.dumps(message) + "\n")
+        log_handle.flush()
+    
+    add_destinations(write_log)
     
     # Log startup message
-    Message.log(
+    log_message(
         message_type="logging_initialized",
         log_file=str(log_file),
         timestamp=datetime.now().isoformat()
@@ -357,6 +362,22 @@ def process_data_combinations(
         csv_paths: List of paths to all CSV files
     """
     with start_action(action_type="process_data_combinations", combinations_count=len(combination_config)) as action:
+        # DEBUG: Show all CSV files available for processing
+        action.log(
+            message_type="debug_available_csvs", 
+            count=len(csv_paths), 
+            files=[str(p) for p in csv_paths]
+        )
+        
+        # DEBUG: Show cleaned names mapping
+        cleaned_names_map = {}
+        for file_path in csv_paths:
+            cleaned_name = clean_csv_name(file_path.name)
+            cleaned_names_map[cleaned_name] = str(file_path)
+        action.log(
+            message_type="debug_cleaned_names_map",
+            mapping=cleaned_names_map
+        )
         for combo_name, combo_config in combination_config.items():
             output_file = combo_config.get("output_file", "unknown.csv")
             action.log(message_type="processing_combination", name=combo_name, output=output_file)
@@ -381,7 +402,16 @@ def process_data_combinations(
                     columns_to_include = source.get("columns_to_include", [])
                     rename_columns = source.get("rename_columns", {})
                     
-                    action.log(message_type="processing_source", priority=priority, csv_name=csv_name)
+                    # DEBUG: Show full source configuration
+                    action.log(
+                        message_type="debug_processing_source", 
+                        priority=priority, 
+                        csv_name=csv_name,
+                        required=required,
+                        columns_to_include=columns_to_include,
+                        rename_columns=rename_columns,
+                        source_config=source
+                    )
                     
                     # Find the CSV file path
                     csv_file_path: Path | None = None
@@ -391,6 +421,20 @@ def process_data_combinations(
                         if cleaned_name == csv_name:
                             csv_file_path = file_path
                             break
+                    
+                    # DEBUG: Show file search result
+                    if csv_file_path:
+                        action.log(
+                            message_type="debug_file_found",
+                            csv_name=csv_name,
+                            file_path=str(csv_file_path)
+                        )
+                    else:
+                        action.log(
+                            message_type="debug_file_not_found",
+                            csv_name=csv_name,
+                            required=required
+                        )
                     
                     if not csv_file_path:
                         if required:
@@ -408,6 +452,16 @@ def process_data_combinations(
                             infer_schema_length=1000,
                             truncate_ragged_lines=True,
                             ignore_errors=True
+                        )
+                        
+                        # DEBUG: Show raw data loaded
+                        action.log(
+                            message_type="debug_raw_data_loaded",
+                            csv_name=csv_name,
+                            rows=len(df),
+                            columns=df.columns,
+                            dtypes=[str(dtype) for dtype in df.dtypes],
+                            sample_head=df.head(3).to_dicts() if len(df) > 0 else []
                         )
                         
                         # Handle merge key rename for standardization
@@ -436,16 +490,73 @@ def process_data_combinations(
                                     break
                                 else:
                                     continue
+                            
+                            # DEBUG: Show column selection
+                            action.log(
+                                message_type="debug_column_selection",
+                                requested=columns_to_include_with_key,
+                                available=available_columns,
+                                before_columns=df.columns
+                            )
+                            
                             df = df.select(available_columns)
+                            
+                            # DEBUG: Show after column selection
+                            action.log(
+                                message_type="debug_after_column_selection",
+                                after_columns=df.columns,
+                                sample=df.head(3).to_dicts() if len(df) > 0 else []
+                            )
                         
-                        # Rename merge key to standardize across sources FIRST
+                        # Save the original merge key name before any transformations
+                        original_merge_key = source_merge_key
+                        
+                        # Handle case where merge key needs to be both renamed and kept with another name
+                        # If the merge key is also in rename_columns, duplicate it first
+                        if rename_columns and source_merge_key in rename_columns:
+                            action.log(
+                                message_type="debug_duplicating_merge_key_column",
+                                merge_key=source_merge_key,
+                                target_name=rename_columns[source_merge_key]
+                            )
+                            # Duplicate the merge key column before any renaming
+                            df = df.with_columns(pl.col(source_merge_key).alias(rename_columns[source_merge_key]))
+                            action.log(
+                                message_type="debug_after_duplication",
+                                columns=df.columns
+                            )
+                        
+                        # Rename merge key to standardize across sources
                         if source_merge_key in df.columns and merge_key_rename != source_merge_key:
+                            action.log(
+                                message_type="debug_renaming_merge_key",
+                                from_key=source_merge_key,
+                                to_key=merge_key_rename
+                            )
                             df = df.rename({source_merge_key: merge_key_rename})
                             source_merge_key = merge_key_rename
                         
-                        # Rename columns if specified
+                        # Rename other columns if specified (excluding merge key which was already handled)
+                        # We need to filter out the ORIGINAL merge key name since it's been renamed/duplicated
                         if rename_columns:
-                            df = df.rename(rename_columns)
+                            # Filter out the original merge key from rename_columns since it's already been duplicated
+                            filtered_rename_columns = {
+                                k: v for k, v in rename_columns.items() 
+                                if k != original_merge_key  # Use original name, not the renamed one
+                            }
+                            
+                            if filtered_rename_columns:
+                                action.log(
+                                    message_type="debug_renaming_other_columns",
+                                    rename_map=filtered_rename_columns,
+                                    before_columns=df.columns
+                                )
+                                df = df.rename(filtered_rename_columns)
+                                action.log(
+                                    message_type="debug_after_rename",
+                                    after_columns=df.columns,
+                                    sample=df.head(3).to_dicts() if len(df) > 0 else []
+                                )
                         
                         # Convert merge key to date for proper merging
                         if merge_key in df.columns:
@@ -468,8 +579,24 @@ def process_data_combinations(
                         # Combine with previous data
                         if combined_df is None:
                             combined_df = df
-                            action.log(message_type="base_dataframe_set", csv_name=csv_name)
+                            action.log(
+                                message_type="debug_base_dataframe_set", 
+                                csv_name=csv_name,
+                                rows=len(combined_df),
+                                columns=combined_df.columns,
+                                sample=combined_df.head(3).to_dicts() if len(combined_df) > 0 else []
+                            )
                         else:
+                            # DEBUG: Show state before merge
+                            action.log(
+                                message_type="debug_before_merge",
+                                existing_rows=len(combined_df),
+                                existing_columns=combined_df.columns,
+                                new_rows=len(df),
+                                new_columns=df.columns,
+                                merge_key=merge_key
+                            )
+                            
                             # Convert existing merge key to date for consistent merging
                             if merge_key in combined_df.columns:
                                 try:
@@ -486,7 +613,15 @@ def process_data_combinations(
                             
                             # Merge with existing data using outer join
                             combined_df = combined_df.join(df, on=merge_key, how="full", coalesce=True)
-                            action.log(message_type="merged_data", csv_name=csv_name)
+                            
+                            # DEBUG: Show state after merge
+                            action.log(
+                                message_type="debug_after_merge",
+                                csv_name=csv_name,
+                                result_rows=len(combined_df),
+                                result_columns=combined_df.columns,
+                                sample=combined_df.head(3).to_dicts() if len(combined_df) > 0 else []
+                            )
                     
                     except Exception as e:
                         action.log(message_type="processing_error", csv_name=csv_name, error=str(e))
@@ -497,6 +632,15 @@ def process_data_combinations(
                 
                 # Process the combined data if we have any
                 if combined_df is not None and not combined_df.is_empty():
+                    # DEBUG: Show combined data before processing
+                    action.log(
+                        message_type="debug_combined_data_before_processing",
+                        combo_name=combo_name,
+                        rows=len(combined_df),
+                        columns=combined_df.columns,
+                        sample_head=combined_df.head(5).to_dicts() if len(combined_df) > 0 else []
+                    )
+                    
                     # Apply output structure configuration
                     output_config = combo_config.get("output_structure", {})
                     
@@ -548,11 +692,22 @@ def process_data_combinations(
                     
                     # Save to output file
                     output_path = Path(output_file)
+                    
+                    # DEBUG: Show final data before writing
+                    action.log(
+                        message_type="debug_final_data_before_write",
+                        output_file=str(output_path),
+                        rows=len(combined_df),
+                        columns=combined_df.columns,
+                        sample_final=combined_df.head(5).to_dicts() if len(combined_df) > 0 else []
+                    )
+                    
                     combined_df.write_csv(output_path)
                     
                     action.log(
                         message_type="output_created",
                         file=output_file,
+                        absolute_path=str(output_path.absolute()),
                         rows=len(combined_df),
                         columns=combined_df.columns
                     )
@@ -562,7 +717,13 @@ def process_data_combinations(
                         sample_df = combined_df.head(3)
                         action.log(message_type="sample_data", sample=sample_df.to_dicts())
                 else:
-                    action.log(message_type="no_data_to_output", name=combo_name)
+                    # DEBUG: Show why there's no data
+                    action.log(
+                        message_type="debug_no_data_to_output",
+                        name=combo_name,
+                        combined_df_is_none=combined_df is None,
+                        combined_df_is_empty=combined_df.is_empty() if combined_df is not None else "N/A"
+                    )
             
             except Exception as e:
                 action.log(message_type="combination_processing_error", name=combo_name, error=str(e))
@@ -586,7 +747,21 @@ def extract_data(samsung_data_path: Path = Path("./Samsung Health")) -> None:
         
         # Find all CSV files
         csv_paths = list(samsung_dump_dir.glob("*.csv"))
-        action.log(message_type="found_csvs", count=len(csv_paths))
+        action.log(
+            message_type="debug_found_csvs", 
+            count=len(csv_paths),
+            files=[str(p) for p in csv_paths]
+        )
+        
+        # DEBUG: Show cleaned names for all CSV files
+        all_cleaned_names = {}
+        for csv_path in csv_paths:
+            cleaned = clean_csv_name(csv_path.name)
+            all_cleaned_names[csv_path.name] = cleaned
+        action.log(
+            message_type="debug_all_csv_names_cleaned",
+            mapping=all_cleaned_names
+        )
         
         # Get and display cleaned CSV names in hierarchical structure
         action.log(message_type="filtering_csv_files")
